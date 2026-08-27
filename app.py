@@ -1,13 +1,9 @@
 from flask import Flask, request, jsonify, render_template
-from database import get_db, init_db
+from database import get_db
 import json
 from datetime import datetime
 
 app = Flask(__name__)
-
-# Init DB on startup (works with both gunicorn and direct run)
-with app.app_context():
-    init_db()
 
 @app.route('/')
 def dashboard():
@@ -22,7 +18,12 @@ def get_signals():
     for s in signals:
         row = dict(s)
         if row.get('filters_json'):
-            row['filters'] = json.loads(row['filters_json'])
+            try:
+                row['filters'] = json.loads(row['filters_json'])
+            except Exception:
+                row['filters'] = {}
+        else:
+            row['filters'] = {}
         del row['filters_json']
         result.append(row)
     return jsonify(result)
@@ -34,7 +35,7 @@ def add_signal():
         return jsonify({"error": "Missing required field: match"}), 400
     conn = get_db()
     filters_json = json.dumps(data.get('filters', {}))
-    conn.execute('''INSERT INTO signals (match, league, date, home_team, away_team, suggested_odds, kelly_stake, filters_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+    conn.execute('INSERT INTO signals (match, league, date, home_team, away_team, suggested_odds, kelly_stake, filters_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         (data.get('match'), data.get('league'), data.get('date'), data.get('home_team'), data.get('away_team'), data.get('odds'), data.get('kelly_stake'), filters_json))
     conn.commit()
     signal_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -68,7 +69,7 @@ def create_bet():
     signal_id = data.get('signal_id')
     if signal_id:
         conn.execute("UPDATE signals SET status = 'validated' WHERE id = ?", (signal_id,))
-    conn.execute('''INSERT INTO bets (signal_id, match, league, date, home_team, away_team, suggested_odds, actual_odds, stake, bookmaker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+    conn.execute('INSERT INTO bets (signal_id, match, league, date, home_team, away_team, suggested_odds, actual_odds, stake, bookmaker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         (signal_id, data.get('match'), data.get('league'), data.get('date'), data.get('home_team'), data.get('away_team'), data.get('suggested_odds'), data.get('actual_odds'), data.get('stake'), data.get('bookmaker')))
     conn.commit()
     bet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -90,15 +91,9 @@ def close_bet(bet_id):
         return jsonify({"error": "Bet not found"}), 404
     stake = bet['stake'] or 0
     actual_odds = bet['actual_odds'] or 0
-    if result == 'won':
-        profit = stake * (actual_odds - 1)
-    elif result == 'lost':
-        profit = -stake
-    else:
-        profit = 0
-    profit = round(profit, 2)
+    profit = round(stake * (actual_odds - 1) if result == 'won' else (-stake if result == 'lost' else 0), 2)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute('''UPDATE bets SET status = ?, profit = ?, closed_at = ? WHERE id = ?''', (result, profit, now, bet_id))
+    conn.execute('UPDATE bets SET status = ?, profit = ?, closed_at = ? WHERE id = ?', (result, profit, now, bet_id))
     current_bankroll = conn.execute("SELECT amount FROM bankroll ORDER BY id DESC LIMIT 1").fetchone()
     new_amount = round((current_bankroll['amount'] if current_bankroll else 1000) + profit, 2)
     conn.execute("INSERT INTO bankroll (amount, updated_at) VALUES (?, ?)", (new_amount, now))
