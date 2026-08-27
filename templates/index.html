@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet Tracker — Suivi de Paris Sportifs</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Bet Tracker <span>Suivi de Paris Sportifs</span></h1>
+            <div class="filters">
+                <select id="filter-league" onchange="applyFilters()">
+                    <option value="">Toutes les ligues</option>
+                </select>
+                <select id="filter-status" onchange="applyFilters()">
+                    <option value="">Tous statuts</option>
+                    <option value="open">En cours</option>
+                    <option value="won">Gagné</option>
+                    <option value="lost">Perdu</option>
+                    <option value="void">Annulé</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card bankroll">
+                <div class="value" id="stat-bankroll">—</div>
+                <div class="label">Bankroll</div>
+            </div>
+            <div class="stat-card profit">
+                <div class="value" id="stat-profit">—</div>
+                <div class="label">Profit / Perte</div>
+            </div>
+            <div class="stat-card winrate">
+                <div class="value" id="stat-winrate">—</div>
+                <div class="label">Win Rate</div>
+            </div>
+            <div class="stat-card roi">
+                <div class="value" id="stat-roi">—</div>
+                <div class="label">ROI</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-total">—</div>
+                <div class="label">Total Paris</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="stat-open">—</div>
+                <div class="label">En Cours</div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="chart-container">
+            <canvas id="bankroll-chart"></canvas>
+        </div>
+
+        <!-- Pending Signals -->
+        <div class="section" id="signals-section">
+            <div class="section-header">
+                <h2>📡 Signaux en attente <span class="badge" id="signals-count">0</span></h2>
+            </div>
+            <div id="signals-list">
+                <div class="empty-state"><p>Aucun signal en attente</p></div>
+            </div>
+        </div>
+
+        <!-- Open Bets -->
+        <div class="section">
+            <div class="section-header">
+                <h2>⏳ Paris en cours</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Match</th>
+                            <th>Ligue</th>
+                            <th>Date</th>
+                            <th>Cote</th>
+                            <th>Mise</th>
+                            <th>Bookmaker</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="open-bets-body">
+                        <tr><td colspan="7" class="empty-state">Aucun pari en cours</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Closed Bets -->
+        <div class="section">
+            <div class="section-header">
+                <h2>✅ Paris terminés</h2>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Match</th>
+                            <th>Ligue</th>
+                            <th>Date</th>
+                            <th>Cote</th>
+                            <th>Mise</th>
+                            <th>Résultat</th>
+                            <th>Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="closed-bets-body">
+                        <tr><td colspan="7" class="empty-state">Aucun pari terminé</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Validate Signal Modal -->
+    <div class="modal-overlay" id="validate-modal">
+        <div class="modal">
+            <h3>✅ Valider le pari</h3>
+            <form id="validate-form" onsubmit="submitBet(event)">
+                <input type="hidden" id="form-signal-id">
+                <div class="form-group">
+                    <label>Match</label>
+                    <input type="text" id="form-match" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Ligue</label>
+                    <input type="text" id="form-league" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Date du match</label>
+                    <input type="text" id="form-date" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Cote proposée (scanner)</label>
+                    <input type="number" id="form-suggested-odds" step="0.01" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Cote réellement prise</label>
+                    <input type="number" id="form-actual-odds" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Mise (€)</label>
+                    <input type="number" id="form-stake" step="0.1" required>
+                </div>
+                <div class="form-group">
+                    <label>Bookmaker</label>
+                    <select id="form-bookmaker" required>
+                        <option value="Betclic">Betclic</option>
+                        <option value="Unibet">Unibet</option>
+                        <option value="Winamax">Winamax</option>
+                        <option value="Bet365">Bet365</option>
+                        <option value="PMU">PMU</option>
+                        <option value="Autre">Autre</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Valider le pari</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div class="modal-overlay" id="result-modal">
+        <div class="modal">
+            <h3>📊 Résultat du pari</h3>
+            <p id="result-match-name" style="margin-bottom:20px; font-weight:600;"></p>
+            <input type="hidden" id="result-bet-id">
+            <div class="form-actions">
+                <button class="btn btn-success" onclick="submitResult('won')">✅ Gagné</button>
+                <button class="btn btn-danger" onclick="submitResult('lost')">❌ Perdu</button>
+                <button class="btn btn-secondary" onclick="submitResult('void')">⚪ Void</button>
+            </div>
+            <div class="form-actions" style="margin-top:10px;">
+                <button class="btn btn-secondary" onclick="closeResultModal()" style="flex:1;">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let bankrollChart = null;
+        let allBets = [];
+        let allLeagues = new Set();
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadSignals();
+            loadBets();
+        });
+
+        async function loadStats() {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+
+            document.getElementById('stat-bankroll').textContent = data.current_bankroll.toFixed(2) + '€';
+            
+            const profitEl = document.getElementById('stat-profit');
+            profitEl.textContent = (data.total_profit >= 0 ? '+' : '') + data.total_profit.toFixed(2) + '€';
+            profitEl.className = 'value ' + (data.total_profit >= 0 ? 'positive' : 'negative');
+
+            document.getElementById('stat-winrate').textContent = data.win_rate + '%';
+            
+            const roiEl = document.getElementById('stat-roi');
+            roiEl.textContent = (data.roi >= 0 ? '+' : '') + data.roi + '%';
+            roiEl.className = 'value ' + (data.roi >= 0 ? 'positive' : 'negative');
+
+            document.getElementById('stat-total').textContent = data.total_bets;
+            document.getElementById('stat-open').textContent = data.open_bets;
+
+            renderChart(data.bankroll_history);
+        }
+
+        function renderChart(history) {
+            const ctx = document.getElementById('bankroll-chart').getContext('2d');
+            
+            if (bankrollChart) bankrollChart.destroy();
+
+            const labels = history.map(h => {
+                const d = new Date(h.date);
+                return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+            });
+            const values = history.map(h => h.amount);
+
+            bankrollChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Bankroll (€)',
+                        data: values,
+                        borderColor: '#e94560',
+                        backgroundColor: 'rgba(233, 69, 96, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#e94560'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#a0a0b0' }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#a0a0b0' }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadSignals() {
+            const res = await fetch('/api/signals');
+            const signals = await res.json();
+            
+            document.getElementById('signals-count').textContent = signals.length;
+
+            if (signals.length === 0) {
+                document.getElementById('signals-list').innerHTML = '<div class="empty-state"><p>Aucun signal en attente</p></div>';
+                return;
+            }
+
+            let html = '';
+            signals.forEach(s => {
+                const filters = s.filters || {};
+                const filterTags = Object.entries(filters).map(([k, v]) => 
+                    `<span class="filter-tag">${k}: ${v}</span>`
+                ).join('');
+
+                const dateStr = s.date ? new Date(s.date).toLocaleString('fr-FR', {
+                    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                }) : '—';
+
+                html += `
+                <div class="signal-card">
+                    <div class="signal-header">
+                        <div class="match-name">${s.match}</div>
+                        <span class="league-badge">${s.league || '—'}</span>
+                    </div>
+                    <div class="signal-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Date</div>
+                            <div class="detail-value">${dateStr}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Cote</div>
+                            <div class="detail-value">${s.suggested_odds || '—'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Mise Kelly (10%)</div>
+                            <div class="detail-value">${s.kelly_stake ? s.kelly_stake.toFixed(1) + '€' : '—'}</div>
+                        </div>
+                    </div>
+                    ${filterTags ? `<div class="filters-list">${filterTags}</div>` : ''}
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick='openValidateModal(${JSON.stringify(s)})'>Valider le pari</button>
+                        <button class="btn btn-secondary" onclick="ignoreSignal(${s.id})">Ignorer</button>
+                    </div>
+                </div>`;
+            });
+
+            document.getElementById('signals-list').innerHTML = html;
+        }
+
+        async function loadBets() {
+            const res = await fetch('/api/bets');
+            allBets = await res.json();
+
+            // Collect leagues for filter
+            allBets.forEach(b => { if (b.league) allLeagues.add(b.league); });
+            populateLeagueFilter();
+            
+            renderBets(allBets);
+        }
+
+        function populateLeagueFilter() {
+            const select = document.getElementById('filter-league');
+            const current = select.value;
+            select.innerHTML = '<option value="">Toutes les ligues</option>';
+            allLeagues.forEach(l => {
+                select.innerHTML += `<option value="${l}" ${l === current ? 'selected' : ''}>${l}</option>`;
+            });
+        }
+
+        function applyFilters() {
+            const league = document.getElementById('filter-league').value;
+            const status = document.getElementById('filter-status').value;
+
+            let filtered = allBets;
+            if (league) filtered = filtered.filter(b => b.league === league);
+            if (status) filtered = filtered.filter(b => b.status === status);
+
+            renderBets(filtered);
+        }
+
+        function renderBets(bets) {
+            const openBets = bets.filter(b => b.status === 'open');
+            const closedBets = bets.filter(b => b.status !== 'open');
+
+            // Open bets table
+            const openBody = document.getElementById('open-bets-body');
+            if (openBets.length === 0) {
+                openBody.innerHTML = '<tr><td colspan="7" class="empty-state">Aucun pari en cours</td></tr>';
+            } else {
+                openBody.innerHTML = openBets.map(b => `
+                    <tr>
+                        <td><strong>${b.match}</strong></td>
+                        <td>${b.league || '—'}</td>
+                        <td>${formatDate(b.date)}</td>
+                        <td>${b.actual_odds || b.suggested_odds || '—'}</td>
+                        <td>${b.stake ? b.stake.toFixed(1) + '€' : '—'}</td>
+                        <td>${b.bookmaker || '—'}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="openResultModal(${b.id}, '${escapeHtml(b.match)}')">Résultat</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            // Closed bets table
+            const closedBody = document.getElementById('closed-bets-body');
+            if (closedBets.length === 0) {
+                closedBody.innerHTML = '<tr><td colspan="7" class="empty-state">Aucun pari terminé</td></tr>';
+            } else {
+                closedBody.innerHTML = closedBets.map(b => `
+                    <tr>
+                        <td><strong>${b.match}</strong></td>
+                        <td>${b.league || '—'}</td>
+                        <td>${formatDate(b.date)}</td>
+                        <td>${b.actual_odds || b.suggested_odds || '—'}</td>
+                        <td>${b.stake ? b.stake.toFixed(1) + '€' : '—'}</td>
+                        <td><span class="status-${b.status}">${statusLabel(b.status)}</span></td>
+                        <td><span class="${b.profit >= 0 ? 'profit-positive' : 'profit-negative'}">${b.profit >= 0 ? '+' : ''}${b.profit.toFixed(2)}€</span></td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function statusLabel(status) {
+            const labels = { won: 'Gagné', lost: 'Perdu', void: 'Annulé', open: 'En cours' };
+            return labels[status] || status;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        }
+
+        // Signal validation
+        function openValidateModal(signal) {
+            document.getElementById('form-signal-id').value = signal.id;
+            document.getElementById('form-match').value = signal.match;
+            document.getElementById('form-league').value = signal.league || '';
+            document.getElementById('form-date').value = signal.date || '';
+            document.getElementById('form-suggested-odds').value = signal.suggested_odds || '';
+            document.getElementById('form-actual-odds').value = signal.suggested_odds || '';
+            document.getElementById('form-stake').value = signal.kelly_stake ? signal.kelly_stake.toFixed(1) : '';
+            document.getElementById('validate-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('validate-modal').classList.remove('active');
+        }
+
+        async function submitBet(e) {
+            e.preventDefault();
+            const payload = {
+                signal_id: parseInt(document.getElementById('form-signal-id').value),
+                match: document.getElementById('form-match').value,
+                league: document.getElementById('form-league').value,
+                date: document.getElementById('form-date').value,
+                suggested_odds: parseFloat(document.getElementById('form-suggested-odds').value),
+                actual_odds: parseFloat(document.getElementById('form-actual-odds').value),
+                stake: parseFloat(document.getElementById('form-stake').value),
+                bookmaker: document.getElementById('form-bookmaker').value
+            };
+
+            const res = await fetch('/api/bets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                closeModal();
+                loadSignals();
+                loadBets();
+                loadStats();
+            }
+        }
+
+        async function ignoreSignal(id) {
+            await fetch(`/api/signals/${id}/ignore`, { method: 'PUT' });
+            loadSignals();
+        }
+
+        // Result modal
+        function openResultModal(betId, matchName) {
+            document.getElementById('result-bet-id').value = betId;
+            document.getElementById('result-match-name').textContent = matchName;
+            document.getElementById('result-modal').classList.add('active');
+        }
+
+        function closeResultModal() {
+            document.getElementById('result-modal').classList.remove('active');
+        }
+
+        async function submitResult(result) {
+            const betId = document.getElementById('result-bet-id').value;
+            const res = await fetch(`/api/bets/${betId}/result`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ result: result })
+            });
+
+            if (res.ok) {
+                closeResultModal();
+                loadBets();
+                loadStats();
+            }
+        }
+    </script>
+</body>
+</html>
